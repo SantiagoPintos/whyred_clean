@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  */
 
-#define pr_fmt(fmt) "%s: " fmt, __func__
+#define pr_fmt(fmt) "lct %s: " fmt, __func__
 
 #include <linux/i2c.h>
 #include <linux/debugfs.h>
@@ -704,7 +704,7 @@ static int smb1351_fastchg_current_set(struct smb1351_charger *chip,
 		(fastchg_current > SMB1351_CHG_FAST_MAX_MA)) {
 		pr_err("bad pre_fastchg current mA=%d asked to set\n",
 					fastchg_current);
-		return -EINVAL;
+
 	}
 
 	/*
@@ -1429,9 +1429,10 @@ static int smb1351_parallel_set_chg_suspend(struct smb1351_charger *chip,
 	if (chip->parallel_charger_suspended == suspend) {
 		pr_debug("Skip same state request suspended = %d suspend=%d\n",
 				chip->parallel_charger_suspended, !suspend);
-		return 0;
-	}
 
+	}
+	pr_err("smb1351 chip->parallel_charger_suspended = %d,request suspend=%d\n",
+				chip->parallel_charger_suspended, suspend);
 	if (!suspend) {
 		rc = smb_chip_get_version(chip);
 		if (rc) {
@@ -1523,6 +1524,17 @@ static int smb1351_parallel_set_chg_suspend(struct smb1351_charger *chip,
 		}
 		chip->parallel_charger_suspended = false;
 	} else {
+		smb1351_enable_volatile_writes(chip);
+		/* control USB suspend via command bits */
+		rc = smb1351_masked_write(chip, VARIOUS_FUNC_REG,
+					APSD_EN_BIT | SUSPEND_MODE_CTRL_BIT,
+						SUSPEND_MODE_CTRL_BY_I2C);
+		if (rc) {
+			pr_err("Couldn't set USB suspend rc=%d\n", rc);
+			return rc;
+		}
+
+
 		rc = smb1351_usb_suspend(chip, CURRENT, true);
 		if (rc)
 			pr_debug("failed to suspend rc=%d\n", rc);
@@ -3355,7 +3367,26 @@ static struct i2c_driver smb1351_charger_driver = {
 	.id_table	= smb1351_charger_id,
 };
 
-module_i2c_driver(smb1351_charger_driver);
+static int __init smb1351_charger_init(void)
+{
+	struct power_supply *pl_psy = power_supply_get_by_name("parallel");
+
+	if (pl_psy) {
+		pr_info("Another parallel driver has been registered\n");
+		return -ENOENT;
+	}
+
+	return i2c_add_driver(&smb1351_charger_driver);
+}
+
+static void __exit smb1351_charger_exit(void)
+{
+	i2c_del_driver(&smb1351_charger_driver);
+}
+
+late_initcall(smb1351_charger_init);
+module_exit(smb1351_charger_exit);
+
 
 MODULE_DESCRIPTION("smb1351 Charger");
 MODULE_LICENSE("GPL v2");
