@@ -45,11 +45,11 @@
 #include "../lct_ctp_upgrade.h"
 #include <linux/proc_fs.h>
 
-#define FW_IHEX_NAME "synaptics/tianma_td4310_miui_e7s.bin"
-#define FW_IMAGE_NAME "synaptics/tianma_td4310_miui_e7s.img"
+#define FW_IHEX_NAME "synaptics/tianma_td4310_e7s.bin"
+#define FW_IMAGE_NAME "synaptics/tianma_td4310_e7s.img"
 
-#define FW_IHEX_NAME_SHENCHAO "synaptics/shenchao_td4310_miui_e7s.bin"
-#define FW_IMAGE_NAME_SHENCHAO "synaptics/shenchao_td4310_miui_e7s.img"
+#define FW_IHEX_NAME_SHENCHAO "synaptics/shenchao_td4310_e7s.bin"
+#define FW_IMAGE_NAME_SHENCHAO "synaptics/shenchao_td4310_e7s.img"
 
 #define DO_STARTUP_FW_UPDATE
 
