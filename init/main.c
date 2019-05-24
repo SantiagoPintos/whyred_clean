@@ -492,11 +492,13 @@ static void __init mm_init(void)
 	ioremap_huge_init();
 	kaiser_init();
 }
+int fpsensor=1;
 
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
 	char *after_dashes;
+	char *p=NULL;
 
 	/*
 	 * Need to run as early as possible, to initialize the
@@ -536,6 +538,13 @@ asmlinkage __visible void __init start_kernel(void)
 	pr_notice("Kernel command line: %s\n", boot_command_line);
 	/* parameters may set static keys */
 	jump_label_init();
+	p = NULL;
+	p= strstr(boot_command_line,"androidboot.fpsensor=fpc");
+	if(p){
+		fpsensor = 1;
+	}else{
+		fpsensor = 2;
+	}
 	parse_early_param();
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,
