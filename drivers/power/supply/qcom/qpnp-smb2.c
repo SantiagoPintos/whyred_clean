@@ -179,7 +179,7 @@ struct smb2 {
 	bool			bad_part;
 };
 
-static int __debug_mask;
+static int __debug_mask = 0xFF;
 module_param_named(
 	debug_mask, __debug_mask, int, S_IRUSR | S_IWUSR
 );
@@ -226,11 +226,8 @@ static int smb2_parse_dt(struct smb2 *chip)
 	chip->dt.no_battery = of_property_read_bool(node,
 						"qcom,batteryless-platform");
 
-	rc = of_property_read_u32(node,
-				"qcom,fcc-max-ua", &chg->batt_profile_fcc_ua);
-	if (rc < 0)
-		chg->batt_profile_fcc_ua = -EINVAL;
-
+	pr_err("sunxing get global set fcc max 2.3A");
+	chg->batt_profile_fcc_ua = 2300000;
 	rc = of_property_read_u32(node,
 				"qcom,fv-max-uv", &chg->batt_profile_fv_uv);
 	if (rc < 0)
@@ -274,18 +271,18 @@ static int smb2_parse_dt(struct smb2 *chip)
 	if (rc < 0)
 		chip->dt.wipower_max_uw = -EINVAL;
 
-	if (of_find_property(node, "qcom,thermal-mitigation", &byte_len)) {
+	if (of_find_property(node, "qcom,thermal-mitigation-china", &byte_len)) {
 		chg->thermal_mitigation = devm_kzalloc(chg->dev, byte_len,
 			GFP_KERNEL);
-
+	
 		if (chg->thermal_mitigation == NULL)
 			return -ENOMEM;
-
+	
 		chg->thermal_levels = byte_len / sizeof(u32);
-		rc = of_property_read_u32_array(node,
-				"qcom,thermal-mitigation",
-				chg->thermal_mitigation,
-				chg->thermal_levels);
+			rc = of_property_read_u32_array(node,
+					"qcom,thermal-mitigation-china",
+					chg->thermal_mitigation,
+					chg->thermal_levels);
 		if (rc < 0) {
 			dev_err(chg->dev,
 				"Couldn't read threm limits rc = %d\n", rc);
@@ -359,6 +356,7 @@ static enum power_supply_property smb2_usb_props[] = {
 	POWER_SUPPLY_PROP_PD_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_PD_VOLTAGE_MIN,
 	POWER_SUPPLY_PROP_SDP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_RERUN_APSD,
 };
 
 static int smb2_usb_get_prop(struct power_supply *psy,
@@ -1021,7 +1019,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 					      BATT_PROFILE_VOTER);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LIPO;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_DONE:
 		rc = smblib_get_prop_batt_charge_done(chg, val);
@@ -1040,6 +1038,11 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_DP_DM:
 		val->intval = chg->pulse_cnt;
 		break;
+
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		rc = smblib_get_prop_battery_full_design(chg, val);
+		break;
+
 	case POWER_SUPPLY_PROP_RERUN_AICL:
 		val->intval = 0;
 		break;
@@ -1562,6 +1565,30 @@ static int smb2_init_hw(struct smb2 *chip)
 	vote(chg->hvdcp_enable_votable, MICRO_USB_VOTER,
 			chg->micro_usb_mode, 0);
 
+	/* Operate the QC2.0 in 5V/9V mode i.e. Disable 12V */
+        rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
+                                                PULSE_COUNT_QC2P0_12V | PULSE_COUNT_QC2P0_9V,
+                                                PULSE_COUNT_QC2P0_9V);
+        if (rc < 0) {
+                dev_err(chg->dev,
+                        "Couldn't configure QC2.0 to 9V rc=%d\n", rc);
+                return rc;
+        }
+        /* Operate the QC3.0 to limit vbus to 8.0v*/
+        rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
+                                        PULSE_COUNT_QC3P0_MASK, 0xf);
+        if (rc < 0) {
+                dev_err(chg->dev,
+                        "Couldn't configure QC3.0 to 7.6V rc=%d\n", rc);
+                return rc;
+        }
+
+	/* lct reconfigure allowed voltage for HVDCP */
+	rc = smblib_write(chg, USBIN_ADAPTER_ALLOW_CFG_REG, USBIN_ADAPTER_ALLOW_5V_OR_9V_TO_12V);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't write to USBIN_ADAPTER_ALLOW_CFG rc=%d\n", rc);
+		return rc;
+	}
 	/*
 	 * AICL configuration:
 	 * start from min and AICL ADC disable
@@ -1716,6 +1743,8 @@ static int smb2_init_hw(struct smb2 *chip)
 		return rc;
 	}
 
+	rc = vote(chg->chg_disable_votable, DEFAULT_VOTER, true, 0);
+
 	switch (chip->dt.chg_inhibit_thr_mv) {
 	case 50:
 		rc = smblib_masked_write(chg, CHARGE_INHIBIT_THRESHOLD_CFG_REG,
@@ -1743,6 +1772,8 @@ static int smb2_init_hw(struct smb2 *chip)
 	default:
 		break;
 	}
+
+	rc = vote(chg->chg_disable_votable, DEFAULT_VOTER, false, 0);
 
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't configure charge inhibit threshold rc=%d\n",

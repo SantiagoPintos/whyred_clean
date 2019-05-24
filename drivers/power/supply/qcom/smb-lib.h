@@ -265,6 +265,7 @@ struct smb_charger {
 	struct power_supply		*usb_main_psy;
 	struct power_supply		*usb_port_psy;
 	enum power_supply_type		real_charger_type;
+	struct power_supply             *pl_psy;
 
 	/* notifiers */
 	struct notifier_block	nb;
@@ -323,6 +324,9 @@ struct smb_charger {
 	int			dcp_icl_ua;
 	int			fake_capacity;
 	bool			step_chg_enabled;
+#ifdef XIAOMI_CHARGER_RUNIN
+	int			charging_enabled;
+#endif
 	bool			sw_jeita_enabled;
 	bool			is_hdc;
 	bool			chg_done;
@@ -353,9 +357,12 @@ struct smb_charger {
 	u32			wa_flags;
 	bool			cc2_detach_wa_active;
 	bool			typec_en_dis_active;
+	bool			float_rerun_apsd;
 	bool			try_sink_active;
 	int			boost_current_ua;
 	int			temp_speed_reading_count;
+	int			qc2_max_pulses;
+    bool		non_compliant_chg_detected;
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
@@ -436,6 +443,10 @@ int smblib_get_prop_input_current_limited(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_set_prop_input_suspend(struct smb_charger *chg,
 				const union power_supply_propval *val);
+#ifdef XIAOMI_CHARGER_RUNIN
+int lct_set_prop_input_suspend(struct smb_charger *chg,
+				const union power_supply_propval *val);
+#endif
 int smblib_set_prop_batt_capacity(struct smb_charger *chg,
 				const union power_supply_propval *val);
 int smblib_set_prop_system_temp_level(struct smb_charger *chg,
@@ -527,6 +538,12 @@ int smblib_get_prop_from_bms(struct smb_charger *chg,
 int smblib_set_prop_pr_swap_in_progress(struct smb_charger *chg,
 				const union power_supply_propval *val);
 void smblib_usb_typec_change(struct smb_charger *chg);
+
+int smblib_get_prop_battery_full_design(struct smb_charger *chg,
+				     union power_supply_propval *val);
+
+int smblib_set_prop_rerun_apsd(struct smb_charger *chg,
+				const union power_supply_propval *val);
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
